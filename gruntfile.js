@@ -1,8 +1,29 @@
-module.exports = function(grunt) {
+const commonjs = require("@rollup/plugin-commonjs")
+const nodeResolve = require("@rollup/plugin-node-resolve")
+
+module.exports = (grunt) => {
 
     grunt.loadNpmTasks('grunt-screeps');
+    grunt.loadNpmTasks('grunt-contrib-clean');
+    grunt.loadNpmTasks('grunt-rollup');
 
     grunt.initConfig({
+        clean: {
+            'dist': ['dist']
+        },
+        rollup: {
+            options: {
+                plugins: [
+                    commonjs(),
+                    nodeResolve()
+                ],
+                format: 'cjs'
+            },
+            files: {
+                dest: 'dist/main.js',
+                src: 'src/main.js'
+            }
+        },
         screeps: {
             options: {
                 email: 'thomascookandroid@outlook.com',
@@ -10,15 +31,10 @@ module.exports = function(grunt) {
                 branch: 'main'
             },
             dist: {
-                files: [
-                    {
-                        expand: true,
-                        cwd: 'src/',
-                        src: ['**/*.{js,wasm}'],
-                        flatten: true
-                    }
-                ]
+                src: ['dist/*.js' ]
             }
-        }
+        },
     });
+
+    grunt.registerTask('default', ['clean', 'rollup:files', 'screeps']);
 }
