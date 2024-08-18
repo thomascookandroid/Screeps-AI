@@ -28,7 +28,7 @@ module.exports = (grunt) => {
             options: {
                 email: 'thomascookandroid@outlook.com',
                 token: 'aa19bc50-3201-4add-959b-d1fb755d1ee0',
-                branch: 'main'
+                branch: 'develop'
             },
             dist: {
                 src: ['dist/*.js' ]

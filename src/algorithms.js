@@ -1,9 +1,10 @@
 const {
     iterateMatrix,
-    ROOM_SIZE
+    ROOM_SIZE,
+    normalizePos
 } = require("screeps-toolkit")
 
-const findClosestValidRoomPosition = (roomSize, room, position, heuristic) => {
+const findClosestValidRoomPosition = (room, position, heuristic) => {
     const start = room.getPositionAt(position.x, position.y);
     if (start == null)
         return null;
@@ -28,23 +29,42 @@ const findClosestValidRoomPosition = (roomSize, room, position, heuristic) => {
     return null;
 }
 
-const partitionCostMatrix = (costMatrix) => {
-    const contiguousareas = [];
+const partitionCostMatrix = (costMatrix, minCost) => {
+    const contiguousRegions = [];
     const costMatrixIterator = iterateMatrix(costMatrix);
     const cellsAlreadyAssignedToRegions = new Set();
     for (const cell of costMatrixIterator) {
         if (cellsAlreadyAssignedToRegions.has(cell))
             continue;
         const region = [];
-        region.push(cell);
         const visited = new Set();
         const frontier = [];
         frontier.push(cell);
+        visited.add(cell);
         while (frontier.length > 0) {
             const current = frontier.shift();
+            if (current.v < minCost)
+                continue;
             const neighbours = getNeighbours(current);
+            for (const neighbour of neighbours) {
+                const matrixNeighbour = {
+                    x: neighbour.x,
+                    y: neighbour.y,
+                    v: costMatrix.get(neighbour.x, neighbour.y)
+                }
+                if (!visited.has(matrixNeighbour)) {
+                    visited.add(matrixNeighbour);
+                    frontier.push(matrixNeighbour);
+                    if (matrixNeighbour.v >= minCost && !cellsAlreadyAssignedToRegions.has(matrixNeighbour)) {
+                        region.push(matrixNeighbour);
+                        cellsAlreadyAssignedToRegions.add(matrixNeighbour);
+                    }
+                }
+            }
         }
+        contiguousRegions.push(region);
     }
+    return contiguousRegions;
 }
 
 const getNeighbours = (pos) => {
@@ -74,5 +94,6 @@ const getNeighbours = (pos) => {
 }
 
 module.exports = {
-    findClosestValidRoomPosition
+    findClosestValidRoomPosition,
+    partitionCostMatrix
 };

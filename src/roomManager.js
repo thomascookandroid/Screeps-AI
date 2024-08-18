@@ -1,5 +1,6 @@
 const { 
-    findClosestValidRoomPosition
+    findClosestValidRoomPosition,
+    partitionCostMatrix
 } = require("./algorithms");
 const { CREEP_ROLE_BUILDER, CREEP_ROLE_HARVESTER,
         CREEP_ROLE_SCOUT, CREEP_ROLE_UPGRADER,
@@ -179,7 +180,7 @@ class ManagedRoom {
         };
 
         const findClosestValidConstructionSite = (pos) => {
-            return findClosestValidRoomPosition(ROOM_SIZE, room, pos, (objects, current) => {
+            return findClosestValidRoomPosition(room, pos, (objects, current) => {
                 for (const object of objects) {
                     if (object.type === LOOK_CREEPS)
                         return false;
@@ -201,7 +202,7 @@ class ManagedRoom {
 
         const planStructures = (room) => {
             planPaths(room);           
-            largestContiguousArea(room);
+            //largestContiguousArea(room);
         };
 
         const planPaths = (room) => {
@@ -222,7 +223,12 @@ class ManagedRoom {
 
         const largestContiguousArea = (room) => {
             const roomDistanceTransform = refreshRoomDistanceTransform(room);
-            
+            const regions = partitionCostMatrix(roomDistanceTransform, 3);
+            for (const region of regions) {
+                for (const cell in region) {
+                    room.visual.text(cell.v, cell.x, cell.y, { color: "white", font: 0.25 });
+                }
+            }
         }
 
 

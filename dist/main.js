@@ -933,7 +933,7 @@ function isInRoom(at) {
  * @param it Object with a position
  * @returns The RoomPosition
  */
-function normalizePos(it) {
+function normalizePos$1(it) {
     if (!(it instanceof RoomPosition)) {
         return it.pos;
     }
@@ -1185,7 +1185,7 @@ class WorldPosition {
      * @returns this
      */
     static fromRoom(at) {
-        const p = normalizePos(at);
+        const p = normalizePos$1(at);
         if (!isInRoom(p))
             throw new RangeError(`${p.x},${p.y} not in range`);
         const { x, y, roomName } = p;
@@ -2078,7 +2078,7 @@ function goTo(c, target, getMemory, roomMatrixCache = {}, opts = {}) {
         return ERR_NOT_OWNER;
     if (c.spawning)
         return ERR_BUSY;
-    const to = normalizePos(target);
+    const to = normalizePos$1(target);
     if (!to)
         return ERR_INVALID_TARGET;
     const range = (opts.range = isExit(to)
@@ -2421,7 +2421,7 @@ var dist = /*#__PURE__*/Object.freeze({
 	DIRECTION_ARROWS: DIRECTION_ARROWS,
 	isExit: isExit,
 	isInRoom: isInRoom,
-	normalizePos: normalizePos,
+	normalizePos: normalizePos$1,
 	parseRoomName: parseRoomName,
 	getRoomNameCoords: getRoomNameCoords,
 	get RoomSectorKind () { return RoomSectorKind; },
@@ -2506,10 +2506,11 @@ var require$$3 = /*@__PURE__*/getAugmentedNamespace(dist);
 
 const {
     iterateMatrix,
-    ROOM_SIZE: ROOM_SIZE$1
+    ROOM_SIZE: ROOM_SIZE$1,
+    normalizePos
 } = require$$3;
 
-const findClosestValidRoomPosition$1 = (roomSize, room, position, heuristic) => {
+const findClosestValidRoomPosition$1 = (room, position, heuristic) => {
     const start = room.getPositionAt(position.x, position.y);
     if (start == null)
         return null;
@@ -2532,6 +2533,44 @@ const findClosestValidRoomPosition$1 = (roomSize, room, position, heuristic) => 
         }
     }
     return null;
+};
+
+const partitionCostMatrix$1 = (costMatrix, minCost) => {
+    const contiguousRegions = [];
+    const costMatrixIterator = iterateMatrix(costMatrix);
+    const cellsAlreadyAssignedToRegions = new Set();
+    for (const cell of costMatrixIterator) {
+        if (cellsAlreadyAssignedToRegions.has(cell))
+            continue;
+        const region = [];
+        const visited = new Set();
+        const frontier = [];
+        frontier.push(cell);
+        visited.add(cell);
+        while (frontier.length > 0) {
+            const current = frontier.shift();
+            if (current.v < minCost)
+                continue;
+            const neighbours = getNeighbours(current);
+            for (const neighbour of neighbours) {
+                const matrixNeighbour = {
+                    x: neighbour.x,
+                    y: neighbour.y,
+                    v: costMatrix.get(neighbour.x, neighbour.y)
+                };
+                if (!visited.has(matrixNeighbour)) {
+                    visited.add(matrixNeighbour);
+                    frontier.push(matrixNeighbour);
+                    if (matrixNeighbour.v >= minCost && !cellsAlreadyAssignedToRegions.has(matrixNeighbour)) {
+                        region.push(matrixNeighbour);
+                        cellsAlreadyAssignedToRegions.add(matrixNeighbour);
+                    }
+                }
+            }
+        }
+        contiguousRegions.push(region);
+    }
+    return contiguousRegions;
 };
 
 const getNeighbours = (pos) => {
@@ -2561,7 +2600,8 @@ const getNeighbours = (pos) => {
 };
 
 var algorithms = {
-    findClosestValidRoomPosition: findClosestValidRoomPosition$1
+    findClosestValidRoomPosition: findClosestValidRoomPosition$1,
+    partitionCostMatrix: partitionCostMatrix$1
 };
 
 class BaseCreep$1 {
@@ -2861,7 +2901,8 @@ var creepData_1 = {
 };
 
 const { 
-    findClosestValidRoomPosition
+    findClosestValidRoomPosition,
+    partitionCostMatrix
 } = algorithms;
 const { CREEP_ROLE_BUILDER, CREEP_ROLE_HARVESTER,
         CREEP_ROLE_SCOUT, CREEP_ROLE_UPGRADER,
@@ -3041,7 +3082,7 @@ class ManagedRoom$1 {
         };
 
         const findClosestValidConstructionSite = (pos) => {
-            return findClosestValidRoomPosition(ROOM_SIZE, room, pos, (objects, current) => {
+            return findClosestValidRoomPosition(room, pos, (objects, current) => {
                 for (const object of objects) {
                     if (object.type === LOOK_CREEPS)
                         return false;
@@ -3063,7 +3104,7 @@ class ManagedRoom$1 {
 
         const planStructures = (room) => {
             planPaths(room);           
-            largestContiguousArea(room);
+            //largestContiguousArea(room);
         };
 
         const planPaths = (room) => {
@@ -3080,11 +3121,6 @@ class ManagedRoom$1 {
                     room.createConstructionSite(roomPosition.x, roomPosition.y, STRUCTURE_ROAD);
                 }
             }
-        };
-
-        const largestContiguousArea = (room) => {
-            refreshRoomDistanceTransform(room);
-            
         };
 
 
