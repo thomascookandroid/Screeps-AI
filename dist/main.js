@@ -29,374 +29,6 @@ function getAugmentedNamespace(n) {
 
 var main = {};
 
-const ROOM_SIZE$1 = 50;
-
-const findClosestValidRoomPosition$1 = (room, position, heuristic) => {
-    const start = room.getPositionAt(position.x, position.y);
-    if (start == null)
-        return null;
-    const frontier = [];
-    frontier.push(start);
-    const reached = new Set();
-    reached.add(start.toString());
-    while (frontier !== undefined && frontier.length > 0) {
-        const current = frontier.shift();
-        const objects = room.lookAt(current.x, current.y);
-        const isValid = heuristic(objects);
-        if (isValid)
-            return current;
-        const neighbours = getNeighbours(room, current);
-        for (const neighbour of neighbours) {
-            if (!reached.has(neighbour.toString())) {
-                frontier.push(neighbour);
-                reached.add(neighbour.toString());
-            }
-        }
-    }
-    return null;
-};
-
-const getNeighbours = (room, position) => {
-    const neighbours = [];
-    const left = position.x - 1;
-    const top = position.y - 1;
-    const right = position.x + 1;
-    const bottom = position.y + 1;
-    if (left >= 0) {
-        const cell = new RoomPosition(left, position.y, room.name);
-        neighbours.push(cell);
-    }
-    if (left >= 0 && top >= 0) {
-        const cell = new RoomPosition(left, top, room.name);
-        neighbours.push(cell);
-    }
-    if (top >= 0) {
-        const cell = new RoomPosition(position.x, top, room.name);
-        neighbours.push(cell);
-    }
-    if (top >= 0 && right < ROOM_SIZE$1) {
-        const cell = new RoomPosition(right, top, room.name);
-        neighbours.push(cell);
-    }
-    if (right < ROOM_SIZE$1) {
-        const cell = new RoomPosition( right, position.y, room.name);
-        neighbours.push(cell);
-    }
-    if (right < ROOM_SIZE$1 && bottom < ROOM_SIZE$1) {
-        const cell = new RoomPosition(right, bottom, room.name);
-        neighbours.push(cell);
-    }
-    if (bottom < ROOM_SIZE$1) {
-        const cell = new RoomPosition(position.x, bottom, room.name);
-        neighbours.push(cell);
-    }
-    if (bottom < ROOM_SIZE$1 && left >= 0) {
-        const cell = new RoomPosition(left, bottom, room.name);
-        neighbours.push(cell);
-    }
-    return neighbours;
-};
-
-var algorithms = {
-    findClosestValidRoomPosition: findClosestValidRoomPosition$1
-};
-
-class BaseCreep$1 {
-    constructor(creep) {
-        this.creep = creep;
-    }
-
-    findClosestFreeSource() {
-        return this.creep.room.find(FIND_SOURCES)
-            .filter(this.isFree)
-            .sort(this.closestToMe)
-            [0];
-    }
-
-    closestToMe() {
-        return (a, b) => {
-            return this.creep.pos.getRangeTo(a.pos) -
-                this.creep.pos.getRangeTo(b.pos);
-        }
-    }
-
-    isFree(object) {
-        const memory = object.room.memory;
-        const occupancy = memory.occupancy;
-        if (occupancy === undefined) 
-            return true;
-        return occupancy[object.id] < 3;
-    }
-}
-
-var baseCreep = {
-    BaseCreep: BaseCreep$1
-};
-
-const { BaseCreep } = baseCreep;
-
-class Harvester$1 extends BaseCreep {
-    run() {
-		if (this.creep.memory.working) {
-			const closestTarget = this.creep.room
-				.find(FIND_MY_STRUCTURES)
-				.filter((structure) => {
-					return (
-						structure instanceof StructureSpawn ||
-						structure instanceof StructureContainer ||
-						structure instanceof StructureExtension ||
-						structure instanceof StructureTower
-					);
-				})
-				.filter((structure) => {
-					return (
-						structure.store.getUsedCapacity(RESOURCE_ENERGY) <
-						structure.store.getCapacity(RESOURCE_ENERGY)
-					);
-				})
-				.sort((structureA, structureB) => {
-					return (
-						this.creep.pos.getRangeTo(structureA.pos) -
-						this.creep.pos.getRangeTo(structureB.pos)
-					);
-				})[0];
-			if (closestTarget) {
-				const workResult = this.creep.transfer(closestTarget, RESOURCE_ENERGY);
-				if (workResult === ERR_NOT_IN_RANGE) {
-					this.creep.moveTo(closestTarget);
-				} else if (workResult === ERR_NOT_ENOUGH_RESOURCES) {
-					this.creep.memory.working = false;
-				}
-			}
-		} else {
-			if (
-				this.creep.store.getUsedCapacity(RESOURCE_ENERGY) ===
-				this.creep.store.getCapacity(RESOURCE_ENERGY)
-			) {
-				this.creep.memory.working = true;
-			} else {
-				const closestSource = this.findClosestFreeSource();
-				if (closestSource) {
-                    if (this.creep.harvest(closestSource) === ERR_NOT_IN_RANGE) {
-                        this.creep.moveTo(closestSource);
-                    }
-                }
-			}
-		}
-    }
-}
-
-var harvester = {
-	Harvester: Harvester$1,
-};
-
-function creeps() {
-    const creeps = [];
-    for (const name in Game.creeps) {
-        const maybeCreep = Game.creeps[name];
-        if (maybeCreep != null) {
-            creeps.push(maybeCreep);
-        }
-    }
-    return creeps;
-}
-
-function rooms() {
-    const rooms = [];
-    for (const name in Game.rooms) {
-        const maybeRoom = Game.rooms[name];
-        if (maybeRoom != null) {
-            rooms.push(maybeRoom);
-        }
-    }
-    return rooms;
-}
-
-function room$2(roomName) { 
-   return Game.rooms[roomName]; 
-}
-
-var utils$1 = {
-    creeps,
-    rooms,
-    room: room$2
-};
-
-const { room: room$1 } = utils$1;
-
-class Upgrader$1 {
-    constructor(creep) {
-        this.creep = creep;
-
-        this.run = () => {
-            if (creep.memory.working) {
-                const controller = creep.room.controller;
-                if (controller) {
-                    const workResult = creep.upgradeController(controller);
-                    if (workResult === ERR_NOT_IN_RANGE) {
-                        creep.moveTo(controller);
-                    }
-                    else if (workResult === ERR_NOT_ENOUGH_RESOURCES) {
-                        creep.memory.working = false;
-                    }
-                }
-            }
-            else {
-                if (creep.store.getUsedCapacity(RESOURCE_ENERGY) ===
-                    creep.store.getCapacity(RESOURCE_ENERGY)) {
-                    creep.memory.working = true;
-                }
-                else {
-                    const creepRoom = room$1(creep.memory.room);
-                    const closestSource = creepRoom
-                        .find(FIND_SOURCES)
-                        .sort((sourceA, sourceB) => {
-                            return (creep.pos.getRangeTo(sourceA.pos) -
-                                creep.pos.getRangeTo(sourceB.pos));
-                        })[0];
-                    if (closestSource) {
-                        if (creep.harvest(closestSource) === ERR_NOT_IN_RANGE) {
-                            creep.moveTo(closestSource);
-                        }
-                    }
-                }
-            }
-        };
-    }
-}
-
-var upgrader = {
-    Upgrader: Upgrader$1
-};
-
-const { room } = utils$1;
-
-class Builder$1 {
-    constructor(creep) {
-        this.creep = creep;
-
-        this.run = () => {
-            if (creep.memory.working) {
-                const closestConstructionSite = creep.room
-                    .find(FIND_CONSTRUCTION_SITES)
-                    .sort(constructionSite => {
-                        return creep.pos.getRangeTo(constructionSite.pos);
-                    })[0];
-                if (closestConstructionSite) {
-                    const workResult = creep.build(closestConstructionSite);
-                    if (workResult === ERR_NOT_IN_RANGE) {
-                        creep.moveTo(closestConstructionSite);
-                    }
-                    else if (workResult === ERR_NOT_ENOUGH_RESOURCES) {
-                        creep.memory.working = false;
-                    }
-                }
-            }
-            else {
-                if (creep.store.getUsedCapacity(RESOURCE_ENERGY) ===
-                    creep.store.getCapacity(RESOURCE_ENERGY)) {
-                    creep.memory.working = true;
-                }
-                else {
-                    const creepRoom = room(creep.memory.room);
-                    const closestSource = creepRoom
-                        .find(FIND_SOURCES)
-                        .sort((sourceA, sourceB) => {
-                            return (creep.pos.getRangeTo(sourceA.pos) -
-                                creep.pos.getRangeTo(sourceB.pos));
-                        })[0];
-                    if (closestSource) {
-                        if (creep.harvest(closestSource) === ERR_NOT_IN_RANGE) {
-                            creep.moveTo(closestSource);
-                        }
-                    }
-                }
-            }
-        };
-    }
-}
-
-var builder = {
-    Builder: Builder$1
-};
-
-class Scout$1 {
-    constructor(creep) {
-        this.creep = creep;
-
-        this.run = () => {
-            if (creep.memory.working) {
-                if (creep.room.controller) {
-                    if (creep.reserveController(creep.room.controller) ===
-                        ERR_NOT_IN_RANGE) {
-                        creep.moveTo(creep.room.controller);
-                    }
-                }
-            }
-            else {
-                if (creep.room.name !== creep.memory.room) {
-                    if (creep.room.controller) {
-                        creep.moveTo(creep.room.controller);
-                        creep.memory.working = true;
-                        creep.memory.room = creep.room.name;
-                    }
-                    else {
-                        moveToFirstExit(creep);
-                    }
-                }
-                else {
-                    moveToFirstExit(creep);
-                }
-            }
-        };
-    }
-}
-
-var scout = {
-    Scout: Scout$1
-};
-
-const { Harvester } = harvester;
-const { Upgrader } = upgrader;
-const { Builder } = builder;
-const { Scout } = scout;
-
-const CREEP_ROLE_HARVESTER$1 = 0;
-const CREEP_ROLE_UPGRADER$1 = 1;
-const CREEP_ROLE_BUILDER$1 = 2;
-const CREEP_ROLE_SCOUT$1 = 3;
-
-const creepData$1 = [
-    {
-        role: CREEP_ROLE_HARVESTER$1,
-        bodyParts: [WORK, CARRY, MOVE],
-        prototype: Harvester
-    },
-    {
-        role: CREEP_ROLE_UPGRADER$1,
-        bodyParts: [WORK, CARRY, MOVE],
-        prototype: Upgrader
-    },
-    {
-        role: CREEP_ROLE_BUILDER$1,
-        bodyParts: [WORK, CARRY, MOVE],
-        prototype: Builder
-    },
-    {
-        role: CREEP_ROLE_SCOUT$1,
-        bodyParts: [WORK, CARRY, MOVE],
-        prototype: Scout
-    }
-];
-
-var creepData_1 = {
-    CREEP_ROLE_HARVESTER: CREEP_ROLE_HARVESTER$1,
-    CREEP_ROLE_UPGRADER: CREEP_ROLE_UPGRADER$1,
-    CREEP_ROLE_BUILDER: CREEP_ROLE_BUILDER$1,
-    CREEP_ROLE_SCOUT: CREEP_ROLE_SCOUT$1,
-    creepData: creepData$1
-};
-
 var _a, _b, _c;
 /** Is game running in single room simulation */
 const IS_SIM = !!Game.rooms.sim;
@@ -1259,9 +891,9 @@ class Profiler {
     }
 }
 
-const ROOM_SIZE = 50;
+const ROOM_SIZE$2 = 50;
 const ROOM_MIN = 0;
-const ROOM_MAX = ROOM_SIZE - 1;
+const ROOM_MAX = ROOM_SIZE$2 - 1;
 /**
  * Map direction to unicode arrow symbol
  * @author warinternal 20170511
@@ -1364,7 +996,7 @@ function getRoomSectorKind(name) {
  * @param name valid room name
  * @returns position at the middle of this room
  */
-const getRoomCenter = (name) => new RoomPosition(ROOM_SIZE / 2, ROOM_SIZE / 2, name);
+const getRoomCenter = (name) => new RoomPosition(ROOM_SIZE$2 / 2, ROOM_SIZE$2 / 2, name);
 /**
  * Distance when moving only vertically, horizontally and diagonally.
  * Correct distance for in room creep movements.
@@ -1616,8 +1248,8 @@ function applyDistanceTransform(cm, oob = 255) {
     let UL, U, UR;
     let L, mid, R;
     let BL, B, BR;
-    for (let y = 0; y < ROOM_SIZE; ++y) {
-        for (let x = 0; x < ROOM_SIZE; ++x) {
+    for (let y = 0; y < ROOM_SIZE$2; ++y) {
+        for (let x = 0; x < ROOM_SIZE$2; ++x) {
             if (cm.get(x, y) !== 0) {
                 UL = cm.get(x - 1, y - 1);
                 U = cm.get(x, y - 1);
@@ -1639,8 +1271,8 @@ function applyDistanceTransform(cm, oob = 255) {
             }
         }
     }
-    for (let y = ROOM_SIZE - 1; y >= 0; --y) {
-        for (let x = ROOM_SIZE - 1; x >= 0; --x) {
+    for (let y = ROOM_SIZE$2 - 1; y >= 0; --y) {
+        for (let x = ROOM_SIZE$2 - 1; x >= 0; --x) {
             mid = cm.get(x, y);
             R = cm.get(x + 1, y);
             BL = cm.get(x - 1, y + 1);
@@ -1678,10 +1310,10 @@ const MATRIX_MAX = 0xff;
 function getRoomTerrainMatrix(roomName, plain = 1, swamp = 5, wall = MATRIX_MAX, exclude) {
     const cm = new PathFinder.CostMatrix();
     const terrain = Game.map.getRoomTerrain(roomName);
-    for (let y = 0; y < ROOM_SIZE; ++y) {
-        for (let x = 0; x < ROOM_SIZE; ++x) {
+    for (let y = 0; y < ROOM_SIZE$2; ++y) {
+        for (let x = 0; x < ROOM_SIZE$2; ++x) {
             const t = terrain.get(x, y);
-            cm._bits[x * ROOM_SIZE + y] =
+            cm._bits[x * ROOM_SIZE$2 + y] =
                 t & TERRAIN_MASK_WALL || (exclude === null || exclude === void 0 ? void 0 : exclude.get(x, y)) ? wall : t & TERRAIN_MASK_SWAMP ? swamp : plain;
         }
     }
@@ -1703,8 +1335,8 @@ function getRoomDistanceTransform$1(roomName, exclude) {
  * @yields position and value
  */
 function* iterateMatrix$1(cm) {
-    for (let y = ROOM_MIN; y < ROOM_SIZE; ++y) {
-        for (let x = ROOM_MIN; x < ROOM_SIZE; ++x) {
+    for (let y = ROOM_MIN; y < ROOM_SIZE$2; ++y) {
+        for (let x = ROOM_MIN; x < ROOM_SIZE$2; ++x) {
             yield { x, y, v: cm.get(x, y) };
         }
     }
@@ -2783,7 +2415,7 @@ var dist = /*#__PURE__*/Object.freeze({
 	CPU_INTENT_COST: CPU_INTENT_COST,
 	adjustedCPULimit: adjustedCPULimit,
 	Profiler: Profiler,
-	ROOM_SIZE: ROOM_SIZE,
+	ROOM_SIZE: ROOM_SIZE$2,
 	ROOM_MIN: ROOM_MIN,
 	ROOM_MAX: ROOM_MAX,
 	DIRECTION_ARROWS: DIRECTION_ARROWS,
@@ -2872,6 +2504,362 @@ var dist = /*#__PURE__*/Object.freeze({
 
 var require$$3 = /*@__PURE__*/getAugmentedNamespace(dist);
 
+const {
+    iterateMatrix,
+    ROOM_SIZE: ROOM_SIZE$1
+} = require$$3;
+
+const findClosestValidRoomPosition$1 = (roomSize, room, position, heuristic) => {
+    const start = room.getPositionAt(position.x, position.y);
+    if (start == null)
+        return null;
+    const frontier = [];
+    frontier.push(start);
+    const reached = new Set();
+    reached.add(start.toString());
+    while (frontier !== undefined && frontier.length > 0) {
+        const current = frontier.shift();
+        const objects = room.lookAt(current.x, current.y);
+        const isValid = heuristic(objects);
+        if (isValid)
+            return current;
+        const neighbours = getNeighbours(current);
+        for (const neighbour of neighbours) {
+            if (!reached.has(neighbour.toString())) {
+                frontier.push(neighbour);
+                reached.add(neighbour.toString());
+            }
+        }
+    }
+    return null;
+};
+
+const getNeighbours = (pos) => {
+    const neighbours = [];
+    const left = pos.x - 1;
+    const top = pos.y - 1;
+    const right = pos.x + 1;
+    const bottom = pos.y + 1;
+    if (left >= 0) 
+        neighbours.push({ x: left, y: pos.y});
+    if (left >= 0 && top >= 0)
+        neighbours.push({ x: left, y: top });
+    if (top >= 0)
+        neighbours.push({ x: pos.x, y: top });
+    if (top >= 0 && right < ROOM_SIZE$1)
+        neighbours.push({ x: right, y: top });
+    if (right < ROOM_SIZE$1)
+        neighbours.push({ x: right, y: pos.y });
+    if (right < ROOM_SIZE$1 && bottom < ROOM_SIZE$1)
+        neighbours.push({ x: right, y: bottom });
+    if (bottom < ROOM_SIZE$1)
+        neighbours.push({ x: pos.x, y: bottom });
+    if (bottom < ROOM_SIZE$1 && left >= 0)
+        neighbours.push({ x: left, y: bottom });
+    return neighbours;
+
+};
+
+var algorithms = {
+    findClosestValidRoomPosition: findClosestValidRoomPosition$1
+};
+
+class BaseCreep$1 {
+    constructor(creep) {
+        this.creep = creep;
+    }
+
+    findClosestFreeSource() {
+        return this.creep.room.find(FIND_SOURCES)
+            .filter(this.isFree)
+            .sort(this.closestToMe)
+            [0];
+    }
+
+    closestToMe() {
+        return (a, b) => {
+            return this.creep.pos.getRangeTo(a.pos) -
+                this.creep.pos.getRangeTo(b.pos);
+        }
+    }
+
+    isFree(object) {
+        const memory = object.room.memory;
+        const occupancy = memory.occupancy;
+        if (occupancy === undefined) 
+            return true;
+        return occupancy[object.id] < 3;
+    }
+}
+
+var baseCreep = {
+    BaseCreep: BaseCreep$1
+};
+
+const { BaseCreep } = baseCreep;
+
+class Harvester$1 extends BaseCreep {
+    run() {
+		if (this.creep.memory.working) {
+			const closestTarget = this.creep.room
+				.find(FIND_MY_STRUCTURES)
+				.filter((structure) => {
+					return (
+						structure instanceof StructureSpawn ||
+						structure instanceof StructureContainer ||
+						structure instanceof StructureExtension ||
+						structure instanceof StructureTower
+					);
+				})
+				.filter((structure) => {
+					return (
+						structure.store.getUsedCapacity(RESOURCE_ENERGY) <
+						structure.store.getCapacity(RESOURCE_ENERGY)
+					);
+				})
+				.sort((structureA, structureB) => {
+					return (
+						this.creep.pos.getRangeTo(structureA.pos) -
+						this.creep.pos.getRangeTo(structureB.pos)
+					);
+				})[0];
+			if (closestTarget) {
+				const workResult = this.creep.transfer(closestTarget, RESOURCE_ENERGY);
+				if (workResult === ERR_NOT_IN_RANGE) {
+					this.creep.moveTo(closestTarget);
+				} else if (workResult === ERR_NOT_ENOUGH_RESOURCES) {
+					this.creep.memory.working = false;
+				}
+			}
+		} else {
+			if (
+				this.creep.store.getUsedCapacity(RESOURCE_ENERGY) ===
+				this.creep.store.getCapacity(RESOURCE_ENERGY)
+			) {
+				this.creep.memory.working = true;
+			} else {
+				const closestSource = this.findClosestFreeSource();
+				if (closestSource) {
+                    if (this.creep.harvest(closestSource) === ERR_NOT_IN_RANGE) {
+                        this.creep.moveTo(closestSource);
+                    }
+                }
+			}
+		}
+    }
+}
+
+var harvester = {
+	Harvester: Harvester$1,
+};
+
+function creeps() {
+    const creeps = [];
+    for (const name in Game.creeps) {
+        const maybeCreep = Game.creeps[name];
+        if (maybeCreep != null) {
+            creeps.push(maybeCreep);
+        }
+    }
+    return creeps;
+}
+
+function rooms() {
+    const rooms = [];
+    for (const name in Game.rooms) {
+        const maybeRoom = Game.rooms[name];
+        if (maybeRoom != null) {
+            rooms.push(maybeRoom);
+        }
+    }
+    return rooms;
+}
+
+function room$2(roomName) { 
+   return Game.rooms[roomName]; 
+}
+
+var utils$1 = {
+    creeps,
+    rooms,
+    room: room$2
+};
+
+const { room: room$1 } = utils$1;
+
+class Upgrader$1 {
+    constructor(creep) {
+        this.creep = creep;
+
+        this.run = () => {
+            if (creep.memory.working) {
+                const controller = creep.room.controller;
+                if (controller) {
+                    const workResult = creep.upgradeController(controller);
+                    if (workResult === ERR_NOT_IN_RANGE) {
+                        creep.moveTo(controller);
+                    }
+                    else if (workResult === ERR_NOT_ENOUGH_RESOURCES) {
+                        creep.memory.working = false;
+                    }
+                }
+            }
+            else {
+                if (creep.store.getUsedCapacity(RESOURCE_ENERGY) ===
+                    creep.store.getCapacity(RESOURCE_ENERGY)) {
+                    creep.memory.working = true;
+                }
+                else {
+                    const creepRoom = room$1(creep.memory.room);
+                    const closestSource = creepRoom
+                        .find(FIND_SOURCES)
+                        .sort((sourceA, sourceB) => {
+                            return (creep.pos.getRangeTo(sourceA.pos) -
+                                creep.pos.getRangeTo(sourceB.pos));
+                        })[0];
+                    if (closestSource) {
+                        if (creep.harvest(closestSource) === ERR_NOT_IN_RANGE) {
+                            creep.moveTo(closestSource);
+                        }
+                    }
+                }
+            }
+        };
+    }
+}
+
+var upgrader = {
+    Upgrader: Upgrader$1
+};
+
+const { room } = utils$1;
+
+class Builder$1 {
+    constructor(creep) {
+        this.creep = creep;
+
+        this.run = () => {
+            if (creep.memory.working) {
+                const closestConstructionSite = creep.room
+                    .find(FIND_CONSTRUCTION_SITES)
+                    .sort(constructionSite => {
+                        return creep.pos.getRangeTo(constructionSite.pos);
+                    })[0];
+                if (closestConstructionSite) {
+                    const workResult = creep.build(closestConstructionSite);
+                    if (workResult === ERR_NOT_IN_RANGE) {
+                        creep.moveTo(closestConstructionSite);
+                    }
+                    else if (workResult === ERR_NOT_ENOUGH_RESOURCES) {
+                        creep.memory.working = false;
+                    }
+                }
+            }
+            else {
+                if (creep.store.getUsedCapacity(RESOURCE_ENERGY) ===
+                    creep.store.getCapacity(RESOURCE_ENERGY)) {
+                    creep.memory.working = true;
+                }
+                else {
+                    const creepRoom = room(creep.memory.room);
+                    const closestSource = creepRoom
+                        .find(FIND_SOURCES)
+                        .sort((sourceA, sourceB) => {
+                            return (creep.pos.getRangeTo(sourceA.pos) -
+                                creep.pos.getRangeTo(sourceB.pos));
+                        })[0];
+                    if (closestSource) {
+                        if (creep.harvest(closestSource) === ERR_NOT_IN_RANGE) {
+                            creep.moveTo(closestSource);
+                        }
+                    }
+                }
+            }
+        };
+    }
+}
+
+var builder = {
+    Builder: Builder$1
+};
+
+class Scout$1 {
+    constructor(creep) {
+        this.creep = creep;
+
+        this.run = () => {
+            if (creep.memory.working) {
+                if (creep.room.controller) {
+                    if (creep.reserveController(creep.room.controller) ===
+                        ERR_NOT_IN_RANGE) {
+                        creep.moveTo(creep.room.controller);
+                    }
+                }
+            }
+            else {
+                if (creep.room.name !== creep.memory.room) {
+                    if (creep.room.controller) {
+                        creep.moveTo(creep.room.controller);
+                        creep.memory.working = true;
+                        creep.memory.room = creep.room.name;
+                    }
+                    else {
+                        moveToFirstExit(creep);
+                    }
+                }
+                else {
+                    moveToFirstExit(creep);
+                }
+            }
+        };
+    }
+}
+
+var scout = {
+    Scout: Scout$1
+};
+
+const { Harvester } = harvester;
+const { Upgrader } = upgrader;
+const { Builder } = builder;
+const { Scout } = scout;
+
+const CREEP_ROLE_HARVESTER$1 = 0;
+const CREEP_ROLE_UPGRADER$1 = 1;
+const CREEP_ROLE_BUILDER$1 = 2;
+const CREEP_ROLE_SCOUT$1 = 3;
+
+const creepData$1 = [
+    {
+        role: CREEP_ROLE_HARVESTER$1,
+        bodyParts: [WORK, CARRY, MOVE],
+        prototype: Harvester
+    },
+    {
+        role: CREEP_ROLE_UPGRADER$1,
+        bodyParts: [WORK, CARRY, MOVE],
+        prototype: Upgrader
+    },
+    {
+        role: CREEP_ROLE_BUILDER$1,
+        bodyParts: [WORK, CARRY, MOVE],
+        prototype: Builder
+    },
+    {
+        role: CREEP_ROLE_SCOUT$1,
+        bodyParts: [WORK, CARRY, MOVE],
+        prototype: Scout
+    }
+];
+
+var creepData_1 = {
+    CREEP_ROLE_HARVESTER: CREEP_ROLE_HARVESTER$1,
+    CREEP_ROLE_UPGRADER: CREEP_ROLE_UPGRADER$1,
+    CREEP_ROLE_BUILDER: CREEP_ROLE_BUILDER$1,
+    CREEP_ROLE_SCOUT: CREEP_ROLE_SCOUT$1,
+    creepData: creepData$1
+};
+
 const { 
     findClosestValidRoomPosition
 } = algorithms;
@@ -2882,8 +2870,9 @@ const _creeps = utils$1.creeps;
 
 const {
     getRoomDistanceTransform,
-    iterateMatrix
+    ROOM_SIZE
 } = require$$3;
+
 const MAX_HARVESTERS = 3;
 const MAX_UPGRADERS = 3;
 const MAX_BUILDERS = 3;
@@ -3052,7 +3041,7 @@ class ManagedRoom$1 {
         };
 
         const findClosestValidConstructionSite = (pos) => {
-            return findClosestValidRoomPosition(room, pos, (objects, current) => {
+            return findClosestValidRoomPosition(ROOM_SIZE, room, pos, (objects, current) => {
                 for (const object of objects) {
                     if (object.type === LOOK_CREEPS)
                         return false;
@@ -3094,13 +3083,8 @@ class ManagedRoom$1 {
         };
 
         const largestContiguousArea = (room) => {
-            const roomDistanceTransform = refreshRoomDistanceTransform(room);
-            console.log(`largestContiguousArea, roomDistanceTransform: ${roomDistanceTransform}`);
-            const roomDistanceTransformIterator = iterateMatrix(roomDistanceTransform);
-            console.log(`largestContiguousArea, roomDistanceTransformIterator: ${roomDistanceTransformIterator}`);
-            for (const cell of iterateMatrix(roomDistanceTransform)) {
-                console.log(`largestContiguousArea, cell: ${cell}`);
-            }
+            refreshRoomDistanceTransform(room);
+            
         };
 
 
