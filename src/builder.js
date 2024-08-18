@@ -19,6 +19,8 @@ class Builder {
                     else if (workResult === ERR_NOT_ENOUGH_RESOURCES) {
                         creep.memory.working = false;
                     }
+                } else {
+                    creep.suicide();
                 }
             }
             else {
@@ -48,3 +50,4 @@ class Builder {
 module.exports = {
     Builder
 };
+

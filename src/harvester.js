@@ -1,44 +1,22 @@
-const { BaseCreep } = require("./baseCreep");
+const { BaseCreep, TARGET_TTL } = require("./baseCreep");
 
 class Harvester extends BaseCreep {
     run() {
 		if (this.creep.memory.working) {
-			const closestTarget = this.creep.room
-				.find(FIND_MY_STRUCTURES)
-				.filter((structure) => {
-					return (
-						structure instanceof StructureSpawn ||
-						structure instanceof StructureContainer ||
-						structure instanceof StructureExtension ||
-						structure instanceof StructureTower
-					);
-				})
-				.filter((structure) => {
-					return (
-						structure.store.getUsedCapacity(RESOURCE_ENERGY) <
-						structure.store.getCapacity(RESOURCE_ENERGY)
-					);
-				})
-				.sort((structureA, structureB) => {
-					return (
-						this.creep.pos.getRangeTo(structureA.pos) -
-						this.creep.pos.getRangeTo(structureB.pos)
-					);
-				})[0];
-			if (closestTarget) {
-				const workResult = this.creep.transfer(closestTarget, RESOURCE_ENERGY);
-				if (workResult === ERR_NOT_IN_RANGE) {
-					this.creep.moveTo(closestTarget);
-				} else if (workResult === ERR_NOT_ENOUGH_RESOURCES) {
-					this.creep.memory.working = false;
-				}
-			}
+            const target = this.refreshTarget();
+            const workResult = this.creep.transfer(target, RESOURCE_ENERGY);
+            if (workResult === ERR_NOT_IN_RANGE) {
+                this.creep.moveTo(target);
+            } else if (workResult === ERR_NOT_ENOUGH_RESOURCES) {
+                this.creep.memory.working = false;
+            }
 		} else {
 			if (
 				this.creep.store.getUsedCapacity(RESOURCE_ENERGY) ===
 				this.creep.store.getCapacity(RESOURCE_ENERGY)
 			) {
 				this.creep.memory.working = true;
+                this.refreshTarget();
 			} else {
 				const closestSource = this.findClosestFreeSource();
 				if (closestSource) {
@@ -49,6 +27,22 @@ class Harvester extends BaseCreep {
 			}
 		}
     }
+
+    refreshTarget () {
+        const targetIdUpdateTick = this.creep.memory.targetIdUpdateTick;
+        const currentTick = Game.time;
+        const targetId = this.creep.memory.targetId;
+        let target = Game.getObjectById(targetId);
+        if (targetIdUpdateTick === undefined ||
+            currentTick - targetIdUpdateTick >= TARGET_TTL ||
+            target === undefined
+        ) {
+            target = this.findClosestEnergySink();
+            this.creep.memory.targetId = target.id;
+            this.creep.memory.targetIdUpdateTick = Game.time;
+        }
+        return target;
+    };
 }
 
 module.exports = {

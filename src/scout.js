@@ -19,13 +19,17 @@ class Scout {
                         creep.memory.room = creep.room.name;
                     }
                     else {
-                        moveToFirstExit(creep);
+                        this.moveToFirstExit(creep);
                     }
                 }
                 else {
-                    moveToFirstExit(creep);
+                    this.moveToFirstExit(creep);
                 }
             }
+        };
+
+        this.moveToFirstExit = () => {
+            return false;
         };
     }
 }

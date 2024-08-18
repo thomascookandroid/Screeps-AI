@@ -1,255 +1,191 @@
-const { 
-    findClosestValidRoomPosition,
-    partitionCostMatrix
+const {
+	findClosestValidRoomPosition,
+	partitionCostMatrix,
 } = require("./algorithms");
-const { CREEP_ROLE_BUILDER, CREEP_ROLE_HARVESTER,
-        CREEP_ROLE_SCOUT, CREEP_ROLE_UPGRADER,
-        creepData } = require("./creepData");
+const {
+	CREEP_ROLE_BUILDER,
+	CREEP_ROLE_HARVESTER,
+	CREEP_ROLE_SCOUT,
+	CREEP_ROLE_UPGRADER,
+	creepData,
+} = require("./creepData");
 const _creeps = require("./utils").creeps;
 
 const {
-    getRoomDistanceTransform,
-    ROOM_SIZE
-} = require("screeps-toolkit")
+	getRoomDistanceTransform,
+	iterateMatrix,
+	ROOM_SIZE,
+} = require("screeps-toolkit");
 
-const MAX_HARVESTERS = 3;
+const MAX_HARVESTERS = 12;
 const MAX_UPGRADERS = 3;
 const MAX_BUILDERS = 3;
-const MAX_SCOUTS = 1;
+const MAX_SCOUTS = 0;
 const MAX_CONTAINERS = 20;
 const MAX_EXTENSIONS = 5;
 const MAX_TOWERS = 3;
 const ROOM_DISTANCE_TRANSFORM_TTL = 60;
 
 class ManagedRoom {
-    constructor(room) {
-        this.room = room;
+	constructor(room) {
+		this.room = room;
+		this.spawn = this.room.find(FIND_MY_SPAWNS)[0];
+		this.controller = room.controller;
+		this.sources = room.find(FIND_SOURCES);
+		this.creeps = _creeps().filter((creep) => {
+			return creep.memory.room === room.name;
+		});
+		const creepsOfRole = (role) => {
+			return this.creeps
+				.filter((creep) => {
+					return creep.memory.role === role;
+				})
+				.map((creep) => {
+					return new creepData[role].prototype(creep);
+				});
+		};
+		this.harvesters = creepsOfRole(CREEP_ROLE_HARVESTER);
+		this.upgraders = creepsOfRole(CREEP_ROLE_UPGRADER);
+		this.builders = creepsOfRole(CREEP_ROLE_BUILDER);
+		this.scouts = creepsOfRole(CREEP_ROLE_SCOUT);
+	}
 
-        this.run = () => {
-            refreshRoomDistanceTransform(room);
-            planStructures(room);
-            spawnRoleIfNotMaxxed(CREEP_ROLE_HARVESTER, MAX_HARVESTERS);
-            spawnRoleIfNotMaxxed(CREEP_ROLE_UPGRADER, MAX_UPGRADERS);
-            spawnRoleIfNotMaxxed(CREEP_ROLE_BUILDER, MAX_BUILDERS);
-            spawnRoleIfNotMaxxed(CREEP_ROLE_SCOUT, MAX_SCOUTS);
-            updateHarvesterSources(room, harvesters);
-            if (controller.level >= 0)
-                planLevelZeroConstruction();
-            if (controller.level >= 2)
-                planLevelTwoConstruction();
-            if (controller.level >= 3)
-                planLevelThreeConstruction();
-            for (const harvester of harvesters) {
-                harvester.run();
-            }
-            for (const upgrader of upgraders) {
-                upgrader.run();
-            }
-            for (const builder of builders) {
-                builder.run();
-            }
-            for (const scout of scouts) {
-                scout.run();
-            }
-        };
+	run() {
+		this.refreshRoomDistanceTransform();
+		this.planStructures();
+		this.spawnRoleIfNotMaxxed(CREEP_ROLE_HARVESTER, MAX_HARVESTERS);
+		this.spawnRoleIfNotMaxxed(CREEP_ROLE_UPGRADER, MAX_UPGRADERS);
+		this.spawnRoleIfNotMaxxed(CREEP_ROLE_BUILDER, MAX_BUILDERS);
+		this.spawnRoleIfNotMaxxed(CREEP_ROLE_SCOUT, MAX_SCOUTS);
+		for (const harvester of this.harvesters) harvester.run();
+		for (const upgrader of this.upgraders) upgrader.run();
+		for (const builder of this.builders) builder.run();
+		for (const scout of this.scouts) scout.run();
+        this.logRoomInfo();
+	}
 
-        const creeps = _creeps().filter(creep => {
-            return creep.memory.room === room.name;
-        });
+	spawnRoleIfNotMaxxed(role, max) {
+		let numberOfCreepsInRole = 0;
+		if (role === CREEP_ROLE_HARVESTER)
+			numberOfCreepsInRole = this.harvesters.length;
+		else if (role === CREEP_ROLE_UPGRADER)
+			numberOfCreepsInRole = this.upgraders.length;
+		else if (role === CREEP_ROLE_BUILDER)
+			numberOfCreepsInRole = this.builders.length;
+		else if (role === CREEP_ROLE_SCOUT)
+			numberOfCreepsInRole = this.scouts.length;
+		if (numberOfCreepsInRole < max) {
+			this.spawn.spawnCreep(creepData[role].bodyParts, Game.time.toString(), {
+				memory: {
+					room: this.room.name,
+					working: false,
+					role: role,
+				},
+			});
+		}
+	}
 
-        const creepsOfRole = (role) => {
-            return creeps.filter(creep => {
-                return creep.memory.role === role;
-            }).map(creep => {
-                return new creepData[role].prototype(creep);
-            });
-        };
-        const harvesters = creepsOfRole(CREEP_ROLE_HARVESTER);
-        const upgraders = creepsOfRole(CREEP_ROLE_UPGRADER);
-        const builders = creepsOfRole(CREEP_ROLE_BUILDER);
-        const scouts = creepsOfRole(CREEP_ROLE_SCOUT);
-        const spawn = room.find(FIND_MY_SPAWNS)[0];
-        const controller = room.controller;
-        const sources = room.find(FIND_SOURCES);
-        const closestSource = (from) => {
-            return sources
-                .sort((sourceA, sourceB) => {
-                    return (from.getRangeTo(sourceA.pos) -
-                        from.getRangeTo(sourceB.pos));
-                })[0];
-        };
+	hasNeedForRole(role) {
+		if (role === CREEP_ROLE_HARVESTER)
+			return this.harvesters.length < MAX_HARVESTERS;
+		if (role === CREEP_ROLE_UPGRADER)
+			return this.upgraders.length < MAX_UPGRADERS;
+		if (role === CREEP_ROLE_BUILDER) {
+            const hasLessThanMaxBuilders =  
+                this.builders.length < MAX_BUILDERS;
+            const hasConstructionSites = 
+                this.room.find(FIND_CONSTRUCTION_SITES).length > 0;
+            return hasLessThanMaxBuilders && hasConstructionSites;
+		}
+        if (role === CREEP_ROLE_SCOUT)
+			return this.scouts.length < MAX_SCOUTS;
+	}
 
-        const updateHarvesterSources = () => {
-            for (const harvester of harvesters) {
-                const source = closestSource(harvester.creep.pos);
-                harvester.creep.memory.sourceId = source.id;
-            }
-        };
+	findClosestValidConstructionSite(pos) {
+		return findClosestValidRoomPosition(this.room, pos, (objects, current) => {
+			for (const object of objects) {
+				if (object.type === LOOK_CREEPS) return false;
+				if (object.type === LOOK_STRUCTURES) return false;
+				if (object.type === LOOK_CONSTRUCTION_SITES)
+					if (object.constructionSite) return false;
+				if (object.type === LOOK_TERRAIN)
+					if (object.terrain === "wall" || object.terrain === "swamp")
+						return false;
+				if (this.spawn.pos.getRangeTo(current) <= 1) return falsef;
+				return true;
+			}
+		});
+	}
 
-        const creepsOfRoleFromCache = (role) => {
-            let roleCreeps = [];
-            if (role === CREEP_ROLE_HARVESTER)
-                roleCreeps = harvesters;
-            else if (role === CREEP_ROLE_UPGRADER)
-                roleCreeps = upgraders;
-            else if (role === CREEP_ROLE_BUILDER)
-                roleCreeps = builders;
-            else if (role === CREEP_ROLE_SCOUT)
-                roleCreeps = scouts;
-            return roleCreeps;
-        };
+	planStructures() {
+		this.planPaths();
+		//this.largestContiguousArea(room);
+	}
 
-        const spawnRoleIfNotMaxxed = (role, max) => {
-            const creepsOfRole = creepsOfRoleFromCache(role);
-            if (creepsOfRole.length < max) {
-                spawn.spawnCreep(creepData[role].bodyParts, Game.time.toString(), {
-                    memory: {
-                        room: room.name,
-                        working: false,
-                        role: role
-                    }
-                });
-            }
-        };
+	planPaths() {
+		const pathsToSources = this.sources.map((source) => {
+			return PathFinder.search(this.spawn.pos, source.pos).path;
+		});
+		for (const path of pathsToSources) {
+			for (const roomPosition of path) {
+				this.room.createConstructionSite(
+					roomPosition.x,
+					roomPosition.y,
+					STRUCTURE_ROAD,
+				);
+			}
+		}
+	}
 
-        const planLevelZeroConstruction = () => {
-            const containerCount = room.find(FIND_CONSTRUCTION_SITES).filter(constructionSite => {
-                return constructionSite.structureType === STRUCTURE_CONTAINER;
-            }).length +
-                room.find(FIND_STRUCTURES).filter(structure => {
-                    structure.structureType === STRUCTURE_CONTAINER;
-                }).length;
-            const requiredContainers = Math.max(0, MAX_CONTAINERS - containerCount);
-            for (let x = 0; x < requiredContainers; x++) {
-                const constructionLocation = findClosestValidConstructionSite(spawn.pos);
-                if (constructionLocation !== undefined && constructionLocation !== null) {
-                    room.createConstructionSite(constructionLocation.x, constructionLocation.y, STRUCTURE_CONTAINER);
-                }
-            }
-        };
+	largestContiguousArea() {
+		const roomDistanceTransform = this.refreshRoomDistanceTransform(this.room);
+		const regions = partitionCostMatrix(roomDistanceTransform, 3);
+		for (const region of regions) {
+			for (const cell in region) {
+				this.room.visual.text(cell.v, cell.x, cell.y, {
+					color: "white",
+					font: 0.25,
+				});
+			}
+		}
+	}
 
-        const planLevelTwoConstruction = () => {
-            const extensionCount = room.find(FIND_CONSTRUCTION_SITES).filter(constructionSite => {
-                return constructionSite.structureType === STRUCTURE_EXTENSION;
-            }).length +
-                room.find(FIND_STRUCTURES).filter(structure => {
-                    structure.structureType === STRUCTURE_EXTENSION;
-                }).length;
-            const requiredExtensions = Math.max(0, MAX_EXTENSIONS - extensionCount);
-            for (let x = 0; x < requiredExtensions; x++) {
-                const constructionLocation = findClosestValidConstructionSite(spawn.pos);
-                if (constructionLocation) {
-                    room.createConstructionSite(constructionLocation === null ||
-                        constructionLocation === void 0 ? void 0 : constructionLocation.x, constructionLocation === null ||
-                            constructionLocation === void 0 ? void 0 : constructionLocation.y, STRUCTURE_EXTENSION);
-                }
-            }
-        };
+	refreshRoomDistanceTransform() {
+		const roomDistanceTransformUpdateTick =
+			this.room.memory.roomDistanceTransformUpdateTick;
+		const currentTick = Game.time;
+		const roomDistanceTransform = this.room.memory.roomDistanceTransform;
+		if (
+			roomDistanceTransformUpdateTick === undefined ||
+			currentTick - roomDistanceTransformUpdateTick >=
+				ROOM_DISTANCE_TRANSFORM_TTL ||
+			roomDistanceTransform === undefined
+		) {
+			const newRoomDistanceTransform = getRoomDistanceTransform(this.room.name);
+			this.room.memory.roomDistanceTransform =
+				newRoomDistanceTransform.serialize();
+			this.room.memory.roomDistanceTransformUpdateTick = currentTick;
+			return newRoomDistanceTransform;
+		}
+		return PathFinder.CostMatrix.deserialize(roomDistanceTransform);
+	}
 
-        const planLevelThreeConstruction = () => {
-            const extensionCount = room.find(FIND_CONSTRUCTION_SITES).filter(constructionSite => {
-                return constructionSite.structureType === STRUCTURE_EXTENSION;
-            }).length +
-                room.find(FIND_STRUCTURES).filter(structure => {
-                    structure.structureType === STRUCTURE_EXTENSION;
-                }).length;
-            const requiredExtensions = Math.max(0, MAX_EXTENSIONS - extensionCount);
-            for (let x = 0; x < requiredExtensions; x++) {
-                const constructionLocation = findClosestValidConstructionSite(spawn.pos);
-                if (constructionLocation) {
-                    room.createConstructionSite(constructionLocation === null ||
-                        constructionLocation === void 0 ? void 0 : constructionLocation.x, constructionLocation === null ||
-                            constructionLocation === void 0 ? void 0 : constructionLocation.y, STRUCTURE_EXTENSION);
-                }
-            }
-            const towerCount = room.find(FIND_CONSTRUCTION_SITES).filter(constructionSite => {
-                return constructionSite.structureType === STRUCTURE_TOWER;
-            }).length +
-                room.find(FIND_STRUCTURES).filter(structure => {
-                    structure.structureType === STRUCTURE_TOWER;
-                }).length;
-            const requiredTowers = Math.max(0, MAX_TOWERS - towerCount);
-            for (let x = 0; x < requiredTowers; x++) {
-                const constructionLocation = findClosestValidConstructionSite(controller.pos);
-                if (constructionLocation) {
-                    room.createConstructionSite(constructionLocation === null ||
-                        constructionLocation === void 0 ? void 0 : constructionLocation.x, constructionLocation === null ||
-                            constructionLocation === void 0 ? void 0 : constructionLocation.y, STRUCTURE_TOWER);
-                }
-            }
-        };
+	visualiseRoomDistanceTransform() {
+		const roomDistanceTransform = this.refreshRoomDistanceTransform(this.room);
+		const iterator = iterateMatrix(roomDistanceTransform);
+		for (const cell of iterator) {
+			this.room.visual.text(cell.v, cell.x, cell.y);
+		}
+	}
 
-        const findClosestValidConstructionSite = (pos) => {
-            return findClosestValidRoomPosition(room, pos, (objects, current) => {
-                for (const object of objects) {
-                    if (object.type === LOOK_CREEPS)
-                        return false;
-                    if (object.type === LOOK_STRUCTURES)
-                        return false;
-                    if (object.type === LOOK_CONSTRUCTION_SITES)
-                        if (object.constructionSite)
-                            return false;
-                    if (object.type === LOOK_TERRAIN)
-                        if (object.terrain === "wall" ||
-                            object.terrain === "swamp")
-                            return false;
-                    if (spawn.pos.getRangeTo(current) <= 1)
-                        return false;
-                    return true;
-                }
-            });
-        };
-
-        const planStructures = (room) => {
-            planPaths(room);           
-            //largestContiguousArea(room);
-        };
-
-        const planPaths = (room) => {
-            const spawn = room.find(FIND_MY_SPAWNS)[0];
-            const sources = room.find(FIND_SOURCES);
-            const pathsToSources = sources.map((source) => {
-                return PathFinder.search(
-                    spawn.pos,
-                    source.pos
-                ).path;
-            });
-            for (const path of pathsToSources) {
-                for (const roomPosition of path) {
-                    room.createConstructionSite(roomPosition.x, roomPosition.y, STRUCTURE_ROAD);
-                }
-            }
-        }
-
-        const largestContiguousArea = (room) => {
-            const roomDistanceTransform = refreshRoomDistanceTransform(room);
-            const regions = partitionCostMatrix(roomDistanceTransform, 3);
-            for (const region of regions) {
-                for (const cell in region) {
-                    room.visual.text(cell.v, cell.x, cell.y, { color: "white", font: 0.25 });
-                }
-            }
-        }
-
-
-        const refreshRoomDistanceTransform = (room) => {
-            const roomDistanceTransformUpdateTick = room.memory.roomDistanceTransformUpdateTick;
-            const currentTick = Game.time;
-            const roomDistanceTransform = room.memory.roomDistanceTransform;
-            if (roomDistanceTransformUpdateTick === undefined ||
-                currentTick - roomDistanceTransformUpdateTick >= ROOM_DISTANCE_TRANSFORM_TTL ||
-                roomDistanceTransform === undefined
-            ) {
-                const newRoomDistanceTransform = getRoomDistanceTransform(room.name);
-                room.memory.roomDistanceTransform = newRoomDistanceTransform.serialize();
-                room.memory.roomDistanceTransformUpdateTick = currentTick;
-                return newRoomDistanceTransform;
-            }
-            return PathFinder.CostMatrix.deserialize(roomDistanceTransform);
-        }
+    logRoomInfo() {
+        console.log(`harvesters: ${this.harvesters.length}`);
+        console.log(`upgraders: ${this.upgraders.length}`);
+        console.log(`builders: ${this.builders.length}`);
+        console.log(`scouts: ${this.scouts.length}`);
     }
 }
 
 module.exports = {
-    ManagedRoom,
+	ManagedRoom,
 };
