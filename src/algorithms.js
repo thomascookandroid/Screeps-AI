@@ -1,14 +1,9 @@
-const ROOM_SIZE = 50;
 const {
-    getRoomDistanceTransform
+    iterateMatrix,
+    ROOM_SIZE
 } = require("screeps-toolkit")
 
-const cacheRoomDistanceTransform = (room) => {
-    const roomDistanceTransform = getRoomDistanceTransform(room.name);
-    room.memory.roomDistanceTransform = roomDistanceTransform.serialize();
-}
-
-const findClosestValidRoomPosition = (room, position, heuristic) => {
+const findClosestValidRoomPosition = (roomSize, room, position, heuristic) => {
     const start = room.getPositionAt(position.x, position.y);
     if (start == null)
         return null;
@@ -22,7 +17,7 @@ const findClosestValidRoomPosition = (room, position, heuristic) => {
         const isValid = heuristic(objects);
         if (isValid)
             return current;
-        const neighbours = getNeighbours(room, current);
+        const neighbours = getNeighbours(current);
         for (const neighbour of neighbours) {
             if (!reached.has(neighbour.toString())) {
                 frontier.push(neighbour);
@@ -33,48 +28,51 @@ const findClosestValidRoomPosition = (room, position, heuristic) => {
     return null;
 }
 
-const getNeighbours = (room, position) => {
+const partitionCostMatrix = (costMatrix) => {
+    const contiguousareas = [];
+    const costMatrixIterator = iterateMatrix(costMatrix);
+    const cellsAlreadyAssignedToRegions = new Set();
+    for (const cell of costMatrixIterator) {
+        if (cellsAlreadyAssignedToRegions.has(cell))
+            continue;
+        const region = [];
+        region.push(cell);
+        const visited = new Set();
+        const frontier = [];
+        frontier.push(cell);
+        while (frontier.length > 0) {
+            const current = frontier.shift();
+            const neighbours = getNeighbours(current);
+        }
+    }
+}
+
+const getNeighbours = (pos) => {
     const neighbours = [];
-    const left = position.x - 1;
-    const top = position.y - 1;
-    const right = position.x + 1;
-    const bottom = position.y + 1;
-    if (left >= 0) {
-        const cell = new RoomPosition(left, position.y, room.name);
-        neighbours.push(cell);
-    }
-    if (left >= 0 && top >= 0) {
-        const cell = new RoomPosition(left, top, room.name);
-        neighbours.push(cell);
-    }
-    if (top >= 0) {
-        const cell = new RoomPosition(position.x, top, room.name);
-        neighbours.push(cell);
-    }
-    if (top >= 0 && right < ROOM_SIZE) {
-        const cell = new RoomPosition(right, top, room.name);
-        neighbours.push(cell);
-    }
-    if (right < ROOM_SIZE) {
-        const cell = new RoomPosition( right, position.y, room.name);
-        neighbours.push(cell);
-    }
-    if (right < ROOM_SIZE && bottom < ROOM_SIZE) {
-        const cell = new RoomPosition(right, bottom, room.name);
-        neighbours.push(cell);
-    }
-    if (bottom < ROOM_SIZE) {
-        const cell = new RoomPosition(position.x, bottom, room.name);
-        neighbours.push(cell);
-    }
-    if (bottom < ROOM_SIZE && left >= 0) {
-        const cell = new RoomPosition(left, bottom, room.name);
-        neighbours.push(cell);
-    }
+    const left = pos.x - 1;
+    const top = pos.y - 1;
+    const right = pos.x + 1;
+    const bottom = pos.y + 1;
+    if (left >= 0) 
+        neighbours.push({ x: left, y: pos.y});
+    if (left >= 0 && top >= 0)
+        neighbours.push({ x: left, y: top });
+    if (top >= 0)
+        neighbours.push({ x: pos.x, y: top });
+    if (top >= 0 && right < ROOM_SIZE)
+        neighbours.push({ x: right, y: top });
+    if (right < ROOM_SIZE)
+        neighbours.push({ x: right, y: pos.y });
+    if (right < ROOM_SIZE && bottom < ROOM_SIZE)
+        neighbours.push({ x: right, y: bottom });
+    if (bottom < ROOM_SIZE)
+        neighbours.push({ x: pos.x, y: bottom });
+    if (bottom < ROOM_SIZE && left >= 0)
+        neighbours.push({ x: left, y: bottom });
     return neighbours;
+
 }
 
 module.exports = {
-    cacheRoomDistanceTransform,
     findClosestValidRoomPosition
 };

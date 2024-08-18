@@ -1,11 +1,15 @@
 const { 
-    cacheRoomDistanceTransform,
     findClosestValidRoomPosition
 } = require("./algorithms");
 const { CREEP_ROLE_BUILDER, CREEP_ROLE_HARVESTER,
         CREEP_ROLE_SCOUT, CREEP_ROLE_UPGRADER,
         creepData } = require("./creepData");
 const _creeps = require("./utils").creeps;
+
+const {
+    getRoomDistanceTransform,
+    ROOM_SIZE
+} = require("screeps-toolkit")
 
 const MAX_HARVESTERS = 3;
 const MAX_UPGRADERS = 3;
@@ -14,14 +18,15 @@ const MAX_SCOUTS = 1;
 const MAX_CONTAINERS = 20;
 const MAX_EXTENSIONS = 5;
 const MAX_TOWERS = 3;
+const ROOM_DISTANCE_TRANSFORM_TTL = 60;
 
-class Room {
+class ManagedRoom {
     constructor(room) {
         this.room = room;
 
-        cacheRoomDistanceTransform(room);
-
         this.run = () => {
+            refreshRoomDistanceTransform(room);
+            planStructures(room);
             spawnRoleIfNotMaxxed(CREEP_ROLE_HARVESTER, MAX_HARVESTERS);
             spawnRoleIfNotMaxxed(CREEP_ROLE_UPGRADER, MAX_UPGRADERS);
             spawnRoleIfNotMaxxed(CREEP_ROLE_BUILDER, MAX_BUILDERS);
@@ -174,7 +179,7 @@ class Room {
         };
 
         const findClosestValidConstructionSite = (pos) => {
-            return findClosestValidRoomPosition(room, pos, (objects, current) => {
+            return findClosestValidRoomPosition(ROOM_SIZE, room, pos, (objects, current) => {
                 for (const object of objects) {
                     if (object.type === LOOK_CREEPS)
                         return false;
@@ -193,9 +198,52 @@ class Room {
                 }
             });
         };
+
+        const planStructures = (room) => {
+            planPaths(room);           
+            largestContiguousArea(room);
+        };
+
+        const planPaths = (room) => {
+            const spawn = room.find(FIND_MY_SPAWNS)[0];
+            const sources = room.find(FIND_SOURCES);
+            const pathsToSources = sources.map((source) => {
+                return PathFinder.search(
+                    spawn.pos,
+                    source.pos
+                ).path;
+            });
+            for (const path of pathsToSources) {
+                for (const roomPosition of path) {
+                    room.createConstructionSite(roomPosition.x, roomPosition.y, STRUCTURE_ROAD);
+                }
+            }
+        }
+
+        const largestContiguousArea = (room) => {
+            const roomDistanceTransform = refreshRoomDistanceTransform(room);
+            
+        }
+
+
+        const refreshRoomDistanceTransform = (room) => {
+            const roomDistanceTransformUpdateTick = room.memory.roomDistanceTransformUpdateTick;
+            const currentTick = Game.time;
+            const roomDistanceTransform = room.memory.roomDistanceTransform;
+            if (roomDistanceTransformUpdateTick === undefined ||
+                currentTick - roomDistanceTransformUpdateTick >= ROOM_DISTANCE_TRANSFORM_TTL ||
+                roomDistanceTransform === undefined
+            ) {
+                const newRoomDistanceTransform = getRoomDistanceTransform(room.name);
+                room.memory.roomDistanceTransform = newRoomDistanceTransform.serialize();
+                room.memory.roomDistanceTransformUpdateTick = currentTick;
+                return newRoomDistanceTransform;
+            }
+            return PathFinder.CostMatrix.deserialize(roomDistanceTransform);
+        }
     }
 }
 
 module.exports = {
-    Room,
+    ManagedRoom,
 };

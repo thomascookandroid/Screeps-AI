@@ -1,4 +1,4 @@
-const { Room } = require("./roomManager");
+const { ManagedRoom } = require("./roomManager");
 const utils = require("./utils");
 
 module.exports.loop = () => {
@@ -10,6 +10,6 @@ module.exports.loop = () => {
 		}
 	}
 	const room = utils.rooms()[0];
-	const managedRoom = new Room(room);
+	const managedRoom = new ManagedRoom(room);
 	managedRoom.run();
 };
